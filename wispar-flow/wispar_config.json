@@ -1,0 +1,21 @@
+{
+  "model_size": "base",
+  "language": "en",
+  "hotkey": "Ctrl+Shift+Space",
+  "hotkey_mode": "toggle",
+  "dictation_mode": "general",
+  "custom_vocabulary": "WISPAR FLOW, Python, JavaScript, API",
+  "sound_effects": true,
+  "vad_threshold": 0.008,
+  "hud_enabled": true,
+  "cleaner_enabled": true,
+  "remove_fillers": true,
+  "auto_punctuation": true,
+  "custom_replacements": {
+    "wispar flow": "WISPAR FLOW"
+  },
+  "audio_device": null,
+  "ollama_enabled": false,
+  "ollama_url": "http://localhost:11434",
+  "ollama_model": "llama3"
+}

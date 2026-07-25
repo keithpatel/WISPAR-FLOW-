@@ -1,0 +1,6 @@
+faster-whisper
+sounddevice
+numpy
+pywin32
+pystray
+Pillow
