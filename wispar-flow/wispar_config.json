@@ -17,5 +17,9 @@
   "audio_device": null,
   "ollama_enabled": false,
   "ollama_url": "http://localhost:11434",
-  "ollama_model": "llama3"
+  "ollama_model": "llama3",
+  "auto_switch_modes": true,
+  "hud_theme": "Cyberpunk",
+  "dynamic_routing": true,
+  "active_profile": "General"
 }

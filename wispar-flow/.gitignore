@@ -1,9 +1,8 @@
 # Virtual environment
 .venv/
 
-# Whisper model files
-models/*.pt
-models/*.en
+# Whisper model files (downloaded on first run)
+models/
 
 # Logs and temp
 *.log

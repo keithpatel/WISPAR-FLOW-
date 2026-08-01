@@ -119,6 +119,18 @@ class ControlPanelGUI:
         self.cb_mode.pack(side="left", padx=8)
         self.cb_mode.bind("<<ComboboxSelected>>", self._on_mode_selected)
 
+        self.var_auto_switch = tk.BooleanVar(value=self.config.get("auto_switch_modes", True))
+        cb_auto_switch = tk.Checkbutton(toggles_frame, text="Auto-Detect Mode from Active Window (VS Code -> Coding, Notes -> Markdown)", variable=self.var_auto_switch, command=self._save_toggles, bg="#1e1e2e", fg="#cdd6f4", selectcolor="#313244", activebackground="#1e1e2e", activeforeground="#cdd6f4", font=("Segoe UI", 10))
+        cb_auto_switch.pack(anchor="w", pady=4)
+
+        self.var_dyn_routing = tk.BooleanVar(value=self.config.get("dynamic_routing", True))
+        cb_dyn = tk.Checkbutton(toggles_frame, text="Enable Dynamic Fast-Path Routing (Sub-second latency for short voice phrases)", variable=self.var_dyn_routing, command=self._save_toggles, bg="#1e1e2e", fg="#cdd6f4", selectcolor="#313244", activebackground="#1e1e2e", activeforeground="#cdd6f4", font=("Segoe UI", 10))
+        cb_dyn.pack(anchor="w", pady=4)
+
+        self.var_sounds = tk.BooleanVar(value=self.config.get("sound_effects", True))
+        cb_snd = tk.Checkbutton(toggles_frame, text="Enable Audio Cues & Sound Effects (Start, Stop, Paste Success)", variable=self.var_sounds, command=self._save_toggles, bg="#1e1e2e", fg="#cdd6f4", selectcolor="#313244", activebackground="#1e1e2e", activeforeground="#cdd6f4", font=("Segoe UI", 10))
+        cb_snd.pack(anchor="w", pady=4)
+
         self.var_hud = tk.BooleanVar(value=self.config.get("hud_enabled", True))
         cb_hud = tk.Checkbutton(toggles_frame, text="Show Floating Audio HUD Overlay & Waveform", variable=self.var_hud, command=self._save_toggles, bg="#1e1e2e", fg="#cdd6f4", selectcolor="#313244", activebackground="#1e1e2e", activeforeground="#cdd6f4", font=("Segoe UI", 10))
         cb_hud.pack(anchor="w", pady=4)
@@ -135,6 +147,9 @@ class ControlPanelGUI:
         self.config.set("dictation_mode", self.cb_mode.get())
 
     def _save_toggles(self):
+        self.config.set("auto_switch_modes", self.var_auto_switch.get())
+        self.config.set("dynamic_routing", self.var_dyn_routing.get())
+        self.config.set("sound_effects", self.var_sounds.get())
         self.config.set("hud_enabled", self.var_hud.get())
         self.config.set("remove_fillers", self.var_fillers.get())
         self.config.set("auto_punctuation", self.var_punc.get())
@@ -333,6 +348,14 @@ class ControlPanelGUI:
         self.cb_model.set(self.config.get("model_size", "tiny"))
         self.cb_model.pack(side="left", padx=5)
 
+        # 1c. HUD Theme Selector
+        f1c = tk.Frame(frame, bg="#1e1e2e")
+        f1c.pack(fill="x", pady=6)
+        tk.Label(f1c, text="HUD Overlay Theme:", font=("Segoe UI", 10, "bold"), width=20, anchor="w", bg="#1e1e2e", fg="#cdd6f4").pack(side="left")
+        self.cb_hud_theme = ttk.Combobox(f1c, values=["Catppuccin", "Nord", "Cyberpunk", "OLED Dark"], state="readonly", width=15)
+        self.cb_hud_theme.set(self.config.get("hud_theme", "Catppuccin"))
+        self.cb_hud_theme.pack(side="left", padx=5)
+
         # 2. Language Selector
         f2 = tk.Frame(frame, bg="#1e1e2e")
         f2.pack(fill="x", pady=6)
@@ -371,11 +394,13 @@ class ControlPanelGUI:
 
     def _save_settings(self):
         new_model = self.cb_model.get()
+        new_hud_theme = self.cb_hud_theme.get() if hasattr(self, 'cb_hud_theme') else "Catppuccin"
         new_lang = self.cb_lang.get()
         new_vocab = self.ent_vocab.get().strip()
         old_model = self.config.get("model_size")
 
         self.config.set("model_size", new_model)
+        self.config.set("hud_theme", new_hud_theme)
         self.config.set("language", new_lang)
         self.config.set("custom_vocabulary", new_vocab)
 

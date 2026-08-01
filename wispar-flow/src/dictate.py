@@ -28,6 +28,8 @@ from text_cleaner import TextCleaner
 from history_manager import HistoryManager
 from hud_overlay import HUDOverlay
 from gui_app import ControlPanelGUI
+from window_tracker import get_recommended_mode
+import sound_effects
 
 warnings.filterwarnings("ignore")
 
@@ -126,7 +128,12 @@ def hotkey_thread_func():
     global hwnd_hotkey
     def wndproc(hwnd, msg, wparam, lparam):
         if msg == WM_HOTKEY and wparam == HOTKEY_ID:
-            threading.Thread(target=toggle_dictation, daemon=True).start()
+            mode = state.config.get("hotkey_mode", "toggle")
+            if mode == "push_to_talk":
+                if not state.recording:
+                    threading.Thread(target=toggle_dictation, daemon=True).start()
+            else:
+                threading.Thread(target=toggle_dictation, daemon=True).start()
             return 0
         return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)
 
@@ -141,11 +148,26 @@ def hotkey_thread_func():
         0, 0, wc.hInstance, None
     )
 
-    result = ctypes.windll.user32.RegisterHotKey(hwnd_hotkey, HOTKEY_ID, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, VK_SPACE)
+    result = ctypes.windll.user32.RegisterHotKey(hwnd_hotkey, HOTKEY_ID, MOD_CONTROL | MOD_SHIFT, VK_SPACE)
     if not result:
         log("ERROR: Failed to register hotkey (another app may be using Ctrl+Shift+Space)")
         return
     log("Hotkey registered: Ctrl+Shift+Space")
+
+    # Keyup monitoring thread for push_to_talk release
+    def ptt_keyup_monitor():
+        while True:
+            time.sleep(0.05)
+            if state.recording and state.config.get("hotkey_mode", "toggle") == "push_to_talk":
+                # Check if Space or Ctrl or Shift are released
+                space_down = (ctypes.windll.user32.GetAsyncKeyState(VK_SPACE) & 0x8000) != 0
+                ctrl_down = (ctypes.windll.user32.GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0
+                shift_down = (ctypes.windll.user32.GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0
+                if not (space_down and ctrl_down and shift_down):
+                    # Key released in Push-To-Talk mode -> Stop recording
+                    threading.Thread(target=toggle_dictation, daemon=True).start()
+
+    threading.Thread(target=ptt_keyup_monitor, daemon=True).start()
 
     msg = wintypes.MSG()
     while True:
@@ -276,11 +298,8 @@ def start_recording():
     state.recording = True
     state.set_status(Status.LISTENING)
     log(">>> RECORDING STARTED")
-    try:
-        import winsound
-        winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
-    except:
-        pass
+    if state.config.get("sound_effects", True):
+        sound_effects.play_start_sound()
 
 def stop_recording():
     if not state.recording:
@@ -288,11 +307,8 @@ def stop_recording():
     state.recording = False
     state.set_status(Status.TRANSCRIBING)
     log("<<< RECORDING STOPPED, processing...")
-    try:
-        import winsound
-        winsound.MessageBeep(winsound.MB_ICONHAND)
-    except:
-        pass
+    if state.config.get("sound_effects", True):
+        sound_effects.play_stop_sound()
 
     if not state.audio_buffer or len(state.audio_buffer) == 0:
         log("No audio captured")
@@ -321,7 +337,7 @@ def load_whisper_model(model_size=None):
     log("Model loaded!")
     return model
 
-def transcribe_audio(audio_data):
+def transcribe_audio(audio_data, model_override=None):
     if not state.model:
         return ""
     try:
@@ -337,7 +353,12 @@ def transcribe_audio(audio_data):
         custom_vocab = state.config.get("custom_vocabulary", "")
         prompt = custom_vocab if custom_vocab else None
 
-        segments, info = state.model.transcribe(audio_1d, language=lang, beam_size=5, initial_prompt=prompt)
+        active_model = state.model
+        if model_override and model_override != state.config.get("model_size"):
+            # Load override model temporarily if needed
+            active_model = load_whisper_model(model_override)
+
+        segments, info = active_model.transcribe(audio_1d, language=lang, beam_size=5, initial_prompt=prompt)
         text = " ".join(segment.text for segment in segments).strip()
         log(f"Raw Transcription: \"{text}\"")
         return text
@@ -448,8 +469,23 @@ def toggle_dictation():
                 state.set_status(Status.IDLE)
                 return
 
-            raw_text = transcribe_audio(audio_clean)
+            # Auto-switch mode based on focused window if enabled
+            if state.config.get("auto_switch_modes", True):
+                auto_mode = get_recommended_mode()
+                if auto_mode != state.config.get("dictation_mode"):
+                    log(f"Auto-switching dictation mode to '{auto_mode}' based on active window context")
+                    state.config.set("dictation_mode", auto_mode)
+
+            # Dynamic Routing: use 'tiny' fast path for short audio (< 3.0s) if enabled
+            target_model = state.config.get("model_size", "tiny")
+            if state.config.get("dynamic_routing", True) and elapsed < 3.0:
+                log(f"Dynamic Routing: Using fast path model ('tiny') for {elapsed:.1f}s utterance")
+                target_model = "tiny"
+
+            raw_text = transcribe_audio(audio_clean, model_override=target_model)
             if raw_text:
+                if state.config.get("sound_effects", True):
+                    sound_effects.play_success_sound()
                 # 1. Process Voice Commands & Punctuation & Macros
                 processed_text, is_action = state.voice_cmd.process(raw_text)
 
@@ -500,11 +536,20 @@ def create_icon(status):
 
 def create_menu():
     active_model = state.config.get("model_size", "tiny")
+    active_profile = state.config.get("active_profile", "General")
     
+    profile_menu = pystray.Menu(
+        pystray.MenuItem("General Dictation", lambda: set_profile("General"), checked=lambda item: active_profile == "General"),
+        pystray.MenuItem("Coding Mode", lambda: set_profile("Coding"), checked=lambda item: active_profile == "Coding"),
+        pystray.MenuItem("Email & Messages", lambda: set_profile("Email"), checked=lambda item: active_profile == "Email"),
+        pystray.MenuItem("Meeting Notes", lambda: set_profile("Meeting Notes"), checked=lambda item: active_profile == "Meeting Notes"),
+    )
+
     items = [
         pystray.MenuItem(f"{APP_NAME} v{APP_VERSION}", None, enabled=False),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("🎛️ Control Panel & History", open_control_panel),
+        pystray.MenuItem("👤 Preset Profiles", profile_menu),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem(f"Status: {state.status.title()}", None, enabled=False),
         pystray.MenuItem(f"Transcriptions: {len(state.history.entries)}", None, enabled=False),
@@ -517,6 +562,16 @@ def create_menu():
         pystray.MenuItem("Exit", on_exit),
     ]
     return pystray.Menu(*items)
+
+def set_profile(profile_name):
+    state.config.set("active_profile", profile_name)
+    if profile_name == "Coding":
+        state.config.set("dictation_mode", "coding")
+    elif profile_name == "Meeting Notes":
+        state.config.set("dictation_mode", "markdown")
+    else:
+        state.config.set("dictation_mode", "general")
+    log(f"Switched profile to: {profile_name}")
 
 def open_control_panel(icon=None, item=None):
     threading.Thread(target=state.gui.show, daemon=True).start()

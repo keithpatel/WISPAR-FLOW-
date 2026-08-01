@@ -11,9 +11,13 @@ DEFAULT_CONFIG = {
     "language": "en",
     "hotkey": "Ctrl+Shift+Space",
     "hotkey_mode": "toggle",  # "toggle" or "push_to_talk"
+    "auto_switch_modes": True, # Auto-detect coding/markdown window context
     "dictation_mode": "general",  # "general", "coding", "markdown"
     "custom_vocabulary": "WISPAR FLOW, Python, JavaScript, API",
     "sound_effects": True,
+    "hud_theme": "Catppuccin", # "Catppuccin", "Nord", "Cyberpunk", "OLED Dark"
+    "dynamic_routing": True,   # Fast model for short audio, selected model for long dictations
+    "active_profile": "General", # "General", "Coding", "Email", "Meeting Notes"
     "vad_threshold": 0.008,
     "hud_enabled": True,
     "cleaner_enabled": True,
@@ -47,9 +51,14 @@ class ConfigManager:
             try:
                 with open(self.config_path, "r", encoding="utf-8") as f:
                     loaded = json.load(f)
-                    self.data.update(loaded)
+                    # Merge with default config to ensure all keys exist
+                    for k, v in DEFAULT_CONFIG.items():
+                        if k not in loaded:
+                            loaded[k] = v
+                    self.data = loaded
             except Exception as e:
                 print(f"[Config] Error loading config: {e}. Using defaults.")
+                self.data = DEFAULT_CONFIG.copy()
         else:
             self.save()
 
